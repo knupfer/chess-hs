@@ -1,29 +1,27 @@
 import System.IO
 import Data.Char
 import Control.Applicative
-import qualified System.Console.ANSI as T
-import qualified Data.Map            as M
+import System.Console.ANSI
+import qualified Data.Map as M
 
 type AllFigures = M.Map Position Figure
 type Player     = Color
-data Move       = Move | Attack      deriving (Eq, Ord)
 data Figure     = Figure Piece Color deriving (Eq)
-data Color      = Black | White      deriving (Eq, Show)
 type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = T.clearScreen >> interaction White startBoard
+main = clearScreen >> interaction White startBoard
 
-printPossibleMoves :: Player -> AllFigures -> IO ()
-printPossibleMoves pl fs =
-  (putStrLn . M.showTree)
-  (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
-         $ M.filter (\(Figure _ c) -> c == pl) fs)
+-- printPossibleMoves :: Player -> AllFigures -> IO ()
+-- printPossibleMoves pl fs =
+--   (putStrLn . M.showTree)
+--   (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
+--          $ M.filter (\(Figure _ c) -> c == pl) fs)
 
-colorize :: T.Color -> String -> String
-colorize col s = T.setSGRCode [T.SetColor T.Foreground T.Vivid col] ++ s
-                 ++ T.setSGRCode [T.Reset]
+colorize :: Color -> String -> String
+colorize col s = setSGRCode [SetColor Foreground Vivid col] ++ s
+                 ++ setSGRCode [Reset]
 
 getScore :: AllFigures -> (Int,Int)
 getScore =  M.foldr (\(Figure p c) (b,w) ->
@@ -38,14 +36,13 @@ getScore =  M.foldr (\(Figure p c) (b,w) ->
 
 interaction :: Player -> AllFigures -> IO ()
 interaction player fs = do
---  printPossibleMoves player fs
   putStr $ prompt fs
   let nextPlayer = if player == Black then White else Black
   if win fs player
     then putStrLn $ "The " ++ show player ++ " King was slayn!"
     else do a <- getLine
-            T.clearScreen
-            either (\x -> putStrLn (colorize T.Red x++"\n")
+            clearScreen
+            either (\x -> putStrLn (colorize Red x++"\n")
                           >> interaction player fs)
                    (interaction nextPlayer) $
                    validateInput a >>= validateMove player fs
@@ -129,28 +126,28 @@ startBoard = M.fromList $ g 8 Black ++ p 7 Black ++ g 1 White ++ p 2 White
 
 charOfPiece :: Figure -> String
 charOfPiece (Figure p c) = ((if c == Black
-                             then colorize T.Magenta . fst else snd) . head $
+                             then colorize Magenta . fst else snd) . head $
  [(b,w) | (piece, b, w) <- [ (King   , "K" , "k")
                            , (Queen  , "Q" , "q")
                            , (Rook   , "R" , "r")
                            , (Knight , "N" , "n")
                            , (Bishop , "B" , "b")
                            , (Pawn   , "P" , "p") ], p == piece])
-                           ++ T.setSGRCode [T.Reset]
+                           ++ setSGRCode [Reset]
 
 prompt :: AllFigures -> String
 prompt fs = unlines . map ("    "++) $
-            [ "┏━━" ++ colorize T.Blue "abcdefgh" ++ "━━┓   Score "
-              ++ colorize T.Magenta (show (fst . getScore $ fs))
+            [ "┏━━" ++ colorize Blue "abcdefgh" ++ "━━┓   Score "
+              ++ colorize Magenta (show (fst . getScore $ fs))
               ++ " " ++ show (snd . getScore $ fs)
             , "┃            ┃"
             ] ++ (g <$> [8,7..1]) ++
             [ "┃            ┃"
-            , "┗━━" ++ colorize T.Blue "abcdefgh" ++ "━━┛"
+            , "┗━━" ++ colorize Blue "abcdefgh" ++ "━━┛"
             , ""
             , " Enter a move"]
-            where g y = (colorize T.Blue . show) y ++ "  " ++ extractRow y fs
-                        ++ "  " ++ (colorize T.Blue . show) y
+            where g y = (colorize Blue . show) y ++ "  " ++ extractRow y fs
+                        ++ "  " ++ (colorize Blue . show) y
 
 extractRow :: Int -> AllFigures -> String
 extractRow r fs = concat $ (\c -> maybe (if even (c+r) then "░" else " ")
