@@ -1,6 +1,7 @@
 import System.IO
 import Data.Char
 import Control.Applicative
+import Control.Monad
 import qualified System.Console.ANSI as Term
 import qualified Data.Map            as M
 
@@ -49,49 +50,45 @@ validateInput a
         toCol = (ord . head . last $ g) - ord 'a' + 1
         toRow = read . tail . last $ g :: Int
 
-validateMove :: Player -> AllFigures -> (Position, Position) -> Either String AllFigures
+validateMove :: Player -> AllFigures -> (Position, Position)
+                -> Either String AllFigures
 validateMove player fs (oldPos,newPos)
   | not (M.member oldPos fs) = Left "Your first coordinate isn't a piece."
   | player /= (\(Just (Figure _ c)) -> c) g = Left "Wrong Color."
-  | validTarget  = newBoard
+  | newPos `elem` possibleMoves oldPos fs   = newBoard
   | otherwise    = Left "This move is invalid."
   where g        = M.lookup oldPos fs
-        newBoard = Right $ M.mapKeys (\x -> if x == oldPos then newPos else x) fs
---        newBoard = Right . M.delete oldPos . M.insert newPos
---                       ((\(Just x) -> x) g) $ fs
-        validTarget  = newPos `elem` possibleMoves oldPos fs
+        newBoard = Right $ M.mapKeys
+                   (\x -> if x == oldPos then newPos else x) fs
 
 possibleMoves :: Position -> AllFigures -> [Position]
-possibleMoves (col,row) fs
-  | piece == King   = g [(col+x,row+y) | x <- [-1..1], y <- [-1..1]]
+possibleMoves (x,y) fs
+  | piece == King   = g [(x+dx,y+dy) | dx <- [-1..1], dy <- [-1..1]]
   | piece == Queen  = bishop ++ rook
   | piece == Rook   = rook
   | piece == Knight = g
-    [(col+x,row+y) | x <- [-2,-1,1,2], y <- [-2,-1,1,2], abs x /= abs y]
+    [(x+dx,y+dy) | dx <- [-2,-1,1,2], dy <- [-2,-1,1,2], abs dx /= abs dy]
   | piece == Bishop = bishop
-  | piece == Pawn = g $ case color of
-     Black -> (if row == 7 && not (M.member (col,row-1) fs) && not (M.member (col,row-2) fs)
-                   then [(col,row-1),(col,row-2)]
-               else [(col,row-1) | not (M.member (col,row-1) fs)]) ++
-       [x | x <- [(col+1,row-1),(col-1,row-1)],
-                    (Just (Figure _ White)) <- [M.lookup x fs]]
-     White -> (if row == 2 && not (M.member (col,row+1) fs) && not (M.member (col,row+2) fs)
-                   then [(col,row+1),(col,row+2)]
-               else [(col,row+1) | not (M.member (col,row+1) fs)]) ++
-              [x | x <- [(col+1,row+1),(col-1,row+1)],
-                   (Just (Figure _ Black)) <- [M.lookup x fs]]
+  | piece == Pawn   = g $ case color of
+     Black -> pawn (-) 7
+     White -> pawn (+) 2
   where
-    g = filter $ \(x,y) -> all (`elem` [1..8]) [x,y] && (x,y) /= (col,row) && null ["1" | (Just (Figure _ c)) <- [M.lookup (x,y) fs], c == color]
-    color = (\(Just (Figure _ c)) -> c) $ M.lookup (col,row) fs
-    piece = (\(Just (Figure p _)) -> p) $ M.lookup (col,row) fs
-    l dc dr = (\y -> concat [y ++ y ++ [maximum y + 1] ++ [minimum y - 1] | not $ null y]) .
-              concatMap (takeWhile
-                         (\x -> not $ M.member (dc col x,dr row x) fs)) $
-              [[1..8],[-1,-2..(-8)]]
-    bishop = g [(col+x,row+y) | x <- l (+) (+), y <- l (-) (+),
-         abs y == abs x]
-    rook = g [(col+x,row+y) | x <- 0:l (+) const, y <- 0:l const (+),
-         (y == 0 && x /= 0) || (x == 0 && y /= 0)]
+    g = filter $ \(fx,fy) -> all (`elem` [1..8]) [fx,fy] && (fx,fy)/=(x,y) &&
+      null ["1" | (Just (Figure _ c)) <- [M.lookup (fx,fy) fs], c == color]
+    color   = (\(Just (Figure _ c)) -> c) $ M.lookup (x,y) fs
+    piece   = (\(Just (Figure p _)) -> p) $ M.lookup (x,y) fs
+    l dc dr = (\s -> concat [s ++ s ++ [maximum s + 1] ++ [minimum s - 1]
+                            | not $ null s]) .
+              concatMap (takeWhile (\d -> not $ M.member (dc x d,dr y d) fs))
+              $ [[1..8],[-1,-2..(-8)]]
+    pawn f r = [p | p <- [(x+1,f y 1),(x-1,f y 1)], M.member p fs] ++
+               (if not (M.member (x,f y 1) fs)
+                then (x,f y 1):[(x,f y 2)|y == r && not(M.member(x,f y 2) fs)]
+                else [])
+    bishop = g [(x+dx,y+dy) | dx <- l (+) (+), dy <- l (-) (+),
+                abs dy == abs dx]
+    rook = g [(x+dx,y+dy) | dx <- 0:l (+) const, dy <- 0:l const (+),
+              dy == 0 || dx == 0]
 
 startBoard :: AllFigures
 startBoard = M.fromList $ g 8 Black ++ p 7 Black ++ g 1 White ++ p 2 White
