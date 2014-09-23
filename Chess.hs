@@ -1,4 +1,3 @@
-import System.IO
 import Data.Char
 import Control.Applicative
 import System.Console.ANSI
@@ -12,6 +11,20 @@ data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
 main = clearScreen >> interaction White startBoard
+
+interaction :: Player -> AllFigures -> IO ()
+interaction player fs = do
+  putStr $ prompt fs
+  let nextPlayer = if player == Black then White else Black
+  if win fs player
+    then putStrLn . colorize Red $ "\nThe " ++ show player
+                                   ++ " King was slayn!\n"
+    else do a <- getLine
+            clearScreen
+            either (\x -> putStrLn (colorize Red x++"\n")
+                          >> interaction player fs)
+                   (interaction nextPlayer) $
+                   validateInput a >>= validateMove player fs
 
 -- printPossibleMoves :: Player -> AllFigures -> IO ()
 -- printPossibleMoves pl fs =
@@ -33,20 +46,6 @@ getScore =  M.foldr (\(Figure p c) (b,w) ->
                          Bishop -> 3
                          Pawn -> 1))
             (-100,-100)
-
-interaction :: Player -> AllFigures -> IO ()
-interaction player fs = do
-  putStr $ prompt fs
-  let nextPlayer = if player == Black then White else Black
-  if win fs player
-    then putStrLn . colorize Red $ "\nThe " ++ show player
-                                   ++ " King was slayn!\n"
-    else do a <- getLine
-            clearScreen
-            either (\x -> putStrLn (colorize Red x++"\n")
-                          >> interaction player fs)
-                   (interaction nextPlayer) $
-                   validateInput a >>= validateMove player fs
 
 win :: AllFigures -> Player -> Bool
 win fs pl
