@@ -1,7 +1,7 @@
 import System.IO
 import Data.Char
 import Control.Applicative
-import qualified System.Console.ANSI as Term
+import qualified System.Console.ANSI as T
 import qualified Data.Map            as M
 
 type AllFigures = M.Map Position Figure
@@ -13,13 +13,17 @@ type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = Term.clearScreen >> interaction White startBoard
+main = T.clearScreen >> interaction White startBoard
 
 printPossibleMoves :: Player -> AllFigures -> IO ()
 printPossibleMoves pl fs =
   (putStrLn . M.showTree)
   (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
          $ M.filter (\(Figure _ c) -> c == pl) fs)
+
+colorize :: T.Color -> String -> String
+colorize col s = T.setSGRCode [T.SetColor T.Foreground T.Vivid col] ++ s
+                 ++ T.setSGRCode [T.Reset]
 
 getScore :: AllFigures -> (Int,Int)
 getScore =  M.foldr (\(Figure p c) (b,w) ->
@@ -34,16 +38,15 @@ getScore =  M.foldr (\(Figure p c) (b,w) ->
 
 interaction :: Player -> AllFigures -> IO ()
 interaction player fs = do
-  Term.setSGR [Term.Reset]
 --  printPossibleMoves player fs
   putStr $ prompt fs
   let nextPlayer = if player == Black then White else Black
   if win fs player
     then putStrLn $ "The " ++ show player ++ " King was slayn!"
     else do a <- getLine
-            Term.clearScreen
-            Term.setSGR [Term.SetColor Term.Foreground Term.Vivid Term.Red]
-            either (\x -> putStrLn (x++"\n") >> interaction player fs)
+            T.clearScreen
+            either (\x -> putStrLn (colorize T.Red x++"\n")
+                          >> interaction player fs)
                    (interaction nextPlayer) $
                    validateInput a >>= validateMove player fs
 
@@ -126,40 +129,28 @@ startBoard = M.fromList $ g 8 Black ++ p 7 Black ++ g 1 White ++ p 2 White
 
 charOfPiece :: Figure -> String
 charOfPiece (Figure p c) = ((if c == Black
-                             then (++) (Term.setSGRCode [Term.SetColor
-                                                         Term.Foreground
-                                                         Term.Vivid
-                                                         Term.Magenta])
-                                  . fst else snd) . head $
+                             then colorize T.Magenta . fst else snd) . head $
  [(b,w) | (piece, b, w) <- [ (King   , "K" , "k")
                            , (Queen  , "Q" , "q")
                            , (Rook   , "R" , "r")
                            , (Knight , "N" , "n")
                            , (Bishop , "B" , "b")
                            , (Pawn   , "P" , "p") ], p == piece])
-                           ++ Term.setSGRCode [Term.Reset]
+                           ++ T.setSGRCode [T.Reset]
 
 prompt :: AllFigures -> String
 prompt fs = unlines . map ("    "++) $
-            [ "┏━━" ++ colorize "abcdefgh" ++ "━━┓   Score "
-              ++ Term.setSGRCode [Term.SetColor
-                                   Term.Foreground
-                                   Term.Vivid
-                                   Term.Magenta]
-              ++ show (fst . getScore $ fs) ++ " "
-              ++ Term.setSGRCode [Term.Reset]
-              ++ show (snd . getScore $ fs)
+            [ "┏━━" ++ colorize T.Blue "abcdefgh" ++ "━━┓   Score "
+              ++ colorize T.Magenta (show (fst . getScore $ fs))
+              ++ " " ++ show (snd . getScore $ fs)
             , "┃            ┃"
             ] ++ (g <$> [8,7..1]) ++
             [ "┃            ┃"
-            , "┗━━" ++ colorize "abcdefgh" ++ "━━┛"
+            , "┗━━" ++ colorize T.Blue "abcdefgh" ++ "━━┛"
             , ""
             , " Enter a move"]
-            where g y = (colorize . show) y ++ "  " ++ extractRow y fs
-                        ++ "  " ++ (colorize . show) y
-                  colorize s = Term.setSGRCode [Term.SetColor Term.Foreground
-                                                Term.Dull Term.Blue]
-                               ++ s ++ Term.setSGRCode [Term.Reset]
+            where g y = (colorize T.Blue . show) y ++ "  " ++ extractRow y fs
+                        ++ "  " ++ (colorize T.Blue . show) y
 
 extractRow :: Int -> AllFigures -> String
 extractRow r fs = concat $ (\c -> maybe (if even (c+r) then "░" else " ")
