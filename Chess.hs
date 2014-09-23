@@ -39,7 +39,8 @@ interaction player fs = do
   putStr $ prompt fs
   let nextPlayer = if player == Black then White else Black
   if win fs player
-    then putStrLn $ "The " ++ show player ++ " King was slayn!"
+    then putStrLn . colorize Red $ "\nThe " ++ show player
+                                   ++ " King was slayn!\n"
     else do a <- getLine
             clearScreen
             either (\x -> putStrLn (colorize Red x++"\n")
@@ -138,8 +139,8 @@ charOfPiece (Figure p c) = ((if c == Black
 prompt :: AllFigures -> String
 prompt fs = unlines . map ("    "++) $
             [ "┏━━" ++ colorize Blue "abcdefgh" ++ "━━┓   Score "
-              ++ colorize Magenta (show (fst . getScore $ fs))
-              ++ " " ++ show (snd . getScore $ fs)
+              ++ colorize Magenta (show (max 0 . fst . getScore $ fs))
+              ++ " " ++ show (max 0 . snd . getScore $ fs)
             , "┃            ┃"
             ] ++ (g <$> [8,7..1]) ++
             [ "┃            ┃"
