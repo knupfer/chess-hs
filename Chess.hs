@@ -1,7 +1,6 @@
 import System.IO
 import Data.Char
 import Control.Applicative
-import Control.Monad
 import qualified System.Console.ANSI as Term
 import qualified Data.Map            as M
 
@@ -125,14 +124,20 @@ startBoard = M.fromList $ g 8 Black ++ p 7 Black ++ g 1 White ++ p 2 White
                              , Knight , Rook]
         p row color = [ ((col,row) , Figure Pawn color) | col <- [1..8] ]
 
-charOfPiece :: Figure -> Char
-charOfPiece (Figure p c) = (if c == Black then fst else snd) . head $
- [(b,w) | (piece, b, w) <- [ (King   , 'K' , 'k')
-                           , (Queen  , 'Q' , 'q')
-                           , (Rook   , 'R' , 'r')
-                           , (Knight , 'N' , 'n')
-                           , (Bishop , 'B' , 'b')
-                           , (Pawn   , 'P' , 'p') ], p == piece]
+charOfPiece :: Figure -> String
+charOfPiece (Figure p c) = ((if c == Black
+                             then (++) (Term.setSGRCode [Term.SetColor
+                                                         Term.Foreground
+                                                         Term.Vivid
+                                                         Term.Magenta])
+                                  . fst else snd) . head $
+ [(b,w) | (piece, b, w) <- [ (King   , "K" , "k")
+                           , (Queen  , "Q" , "q")
+                           , (Rook   , "R" , "r")
+                           , (Knight , "N" , "n")
+                           , (Bishop , "B" , "b")
+                           , (Pawn   , "P" , "p") ], p == piece])
+                           ++ Term.setSGRCode [Term.Reset]
 
 prompt :: AllFigures -> String
 prompt fs = unlines $ ["","   abcdefgh",""] ++ (g <$> [8,7..1])
@@ -140,4 +145,4 @@ prompt fs = unlines $ ["","   abcdefgh",""] ++ (g <$> [8,7..1])
             where g y = show y ++ "  " ++ extractRow y fs ++ "  " ++ show y
 
 extractRow :: Int -> AllFigures -> String
-extractRow r fs = (\c -> maybe '.' charOfPiece $ M.lookup (c,r) fs) <$> [1..8]
+extractRow r fs = concat $ (\c -> maybe "." charOfPiece $ M.lookup (c,r) fs) <$> [1..8]
