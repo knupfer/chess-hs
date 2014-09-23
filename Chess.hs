@@ -14,17 +14,37 @@ type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = Term.clearScreen >> interaction Black startBoard
+main = Term.clearScreen >> interaction White startBoard
+
+printPossibleMoves :: Player -> AllFigures -> IO ()
+printPossibleMoves pl fs =
+  (putStrLn . M.showTree)
+  (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
+         $ M.filter (\(Figure _ c) -> c == pl) fs)
+
+getScore :: AllFigures -> (Int,Int)
+getScore =  M.foldr (\(Figure p c) (w,b) ->
+              (\m -> if c == White then (w+m,b) else (w,b+m))
+              (case p of King -> 100
+                         Queen -> 9
+                         Rook -> 5
+                         Knight -> 3
+                         Bishop -> 3
+                         Pawn -> 1))
+            (0,0)
 
 interaction :: Player -> AllFigures -> IO ()
 interaction player fs = do
+  putStrLn $ "The Score is: " ++ show (fst (getScore fs))
+    ++ " for White and " ++ show (snd (getScore fs)) ++ " for Black\n"
+  printPossibleMoves player fs
   putStr $ prompt fs
   let nextPlayer = if player == Black then White else Black
   if win fs player
     then putStrLn $ "The " ++ show player ++ " King was slayn!"
     else do a <- getLine
             Term.clearScreen
-            either (\x -> putStrLn x >> interaction player fs)
+            either (\x -> putStrLn (x++"\n") >> interaction player fs)
                    (interaction nextPlayer) $
                    validateInput a >>= validateMove player fs
 
@@ -58,8 +78,14 @@ validateMove player fs (oldPos,newPos)
   | newPos `elem` possibleMoves oldPos fs   = newBoard
   | otherwise    = Left "This move is invalid."
   where g        = M.lookup oldPos fs
-        newBoard = Right $ M.mapKeys
-                   (\x -> if x == oldPos then newPos else x) fs
+        newBoard = Right . pawnMutation
+                         . M.mapKeys (\x -> if x == oldPos then newPos else x)
+                         $ M.delete newPos fs
+
+pawnMutation :: AllFigures -> AllFigures
+pawnMutation = M.mapWithKey (\(_,y) a@(Figure p c)
+                             -> if y `elem` [1,8] && p == Pawn
+                                then Figure Queen c else a)
 
 possibleMoves :: Position -> AllFigures -> [Position]
 possibleMoves (x,y) fs
