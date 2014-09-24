@@ -5,6 +5,7 @@ import Control.Applicative
 import System.Console.ANSI
 import qualified Data.Set as S
 import qualified Data.Map as M
+import System.Random
 
 type AllFigures = M.Map Position Figure
 type Player     = Color
@@ -13,40 +14,76 @@ type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = clearScreen >> nextTurn White startBoard
+main = clearScreen >> nextTurn 1 White startBoard
 
-interaction :: Player -> AllFigures -> IO ()
-interaction player fs = do
-  printPossibleMoves player fs
+interaction :: Int -> Player -> AllFigures -> IO ()
+interaction turn player fs = do
   let nextPl = if player == Black then White else Black
   a <- getLine
   clearScreen
-  either (\x -> putStrLn (colorize Red x ++ "\n") >> nextTurn player fs)
-    (nextTurn nextPl) $ validateInput a >>= validateMove player fs
+  either (\x -> putStrLn (colorize Red x ++ "\n")
+                >> nextTurn (turn+1) player fs)
+    (nextTurn 1 nextPl) $ validateInput a >>= validateMove player fs
 
-nextTurn :: Player -> AllFigures -> IO ()
-nextTurn pl fs = do
+nextTurn :: Int -> Player -> AllFigures -> IO ()
+nextTurn turn pl fs = do
+  pc <- fmap ("-c" `elem`) getArgs
+  pc2 <- fmap ("-c2" `elem`) getArgs
   when (threat fs pl) . putStrLn $ colorize Yellow "Your King is threaten!\n"
   putStr $ prompt fs
-  if win fs pl
-    then putStrLn . colorize Red $ "\nThe " ++ show pl
-         ++ " King was slayn!\n"
-    else do
-    computer <- fmap ("-c" `elem`) getArgs
-    if computer then computerMove pl fs else interaction pl fs
-
-computerMove :: Player -> AllFigures -> IO ()
-computerMove player fs = do
+  when (pc && pc2)$ getLine >>= putStr
   clearScreen
-  putStrLn "BEEP"
-  nextTurn player fs
+  if win fs pl
+    then putStrLn . colorize Red $ "\nThe " ++ show pl ++ " King was slayn!\n"
+    else
+    if (pc && pl == Black) || pc2
+    then computerMove turn [] pl fs
+    else interaction turn pl fs
 
-printPossibleMoves :: Player -> AllFigures -> IO ()
-printPossibleMoves pl fs =
-  (putStrLn . M.showTree)
-  (M.filter (not . null) . M.mapWithKey
-   (\k _ -> S.toList $ possibleMoves k fs)
-         $ M.filter (\(Figure _ c) -> c == pl) fs)
+computerMove :: Int -> [(Position,Position)] -> Player -> AllFigures -> IO ()
+computerMove turn bad player fs = do
+  let nextPl = if player == Black then White else Black
+  let move = bestMove turn bad player fs
+  if length bad > 50
+    then putStrLn $ prompt fs
+         ++ colorize Red ("\nThe " ++ show player ++ " King was slayn!\n")
+    else
+    either (\_ -> computerMove turn (move:bad) player fs)
+    (nextTurn (turn+1) nextPl) $validateMove player fs move
+
+bestMove :: Int -> [(Position,Position)] -> Player -> AllFigures
+            -> (Position,Position)
+bestMove turn bad pl fs = snd a
+  where
+    a = M.foldrWithKey
+        (\k list acc@(s,_) ->
+          if fst (scoreFold k list) < s
+          then (fst $ scoreFold k list,(k,snd $ scoreFold k list))
+          else if snd (distanceFold k list) /= (0,0) && rand 10 > 4
+               then (s,(k,snd (distanceFold k list))) else acc)
+        ((500,500),((1,2),(5,5))) g
+    rand r = fst (randomR (0,r-1)
+                  (mkStdGen (length bad * turn * M.size fs * r
+                             * sum [x*y| (x,y) <- M.keys fs])))
+    distanceFold k = foldr (\(lx,ly) acc@(s,_) ->
+                             if (lx-fst kingPos)+(ly-snd kingPos)<(s+rand 10)
+                                && notElem (k,(lx,ly)) bad
+                             then ((lx-fst kingPos)+(ly-snd kingPos), (lx,ly))
+                             else acc) (64,(0,0))
+    kingPos = head . M.keys $ M.filter (Figure King (if pl == White
+                                       then Black
+                                       else White)==) fs
+    scoreFold k = foldr (\l acc@(s,_) ->
+                          (if ((score k l < s) && notElem (k,l) bad) ||
+                              ((score k l == s) && notElem (k,l) bad &&
+                               rand 10 > 4) then (score k l, l) else
+                             acc)) ((200,200),(1,2))
+    g = M.filter (not . null)
+        . M.mapWithKey (\k _ -> S.toList $ possibleMoves k fs)
+        $ M.filter (\(Figure _ c) -> c == pl) fs
+    score old new = getScore . pawnMutation
+                   . M.mapKeys (\x -> if x == old then new else x)
+                   $ M.delete new fs
 
 colorize :: Color -> String -> String
 colorize col s = setSGRCode [SetColor Foreground Vivid col] ++ s
