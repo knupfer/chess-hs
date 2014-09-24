@@ -1,5 +1,6 @@
 import System.Environment
 import Data.Char
+import Control.Monad
 import Control.Applicative
 import System.Console.ANSI
 import qualified Data.Set as S
@@ -25,6 +26,7 @@ interaction player fs = do
 
 nextTurn :: Player -> AllFigures -> IO ()
 nextTurn pl fs = do
+  when (threat fs pl) . putStrLn $ colorize Yellow "Your King is threaten!\n"
   putStr $ prompt fs
   if win fs pl
     then putStrLn . colorize Red $ "\nThe " ++ show pl
@@ -61,6 +63,12 @@ getScore =  M.foldr (\(Figure p c) (b,w) ->
                          Pawn -> 1))
             (-100,-100)
 
+threat :: AllFigures -> Player -> Bool
+threat fs pl = M.foldr (\x y -> kingPos `elem` x || y) False
+               (M.mapWithKey (\k _ -> S.toList $ possibleMoves k fs)
+                $ M.filter (\(Figure _ c) -> c /= pl) fs)
+  where kingPos = fst . head . M.toList $ M.filter (Figure King pl==) fs
+
 win :: AllFigures -> Player -> Bool
 win fs pl
   | M.null $ M.filter (Figure King pl==) fs = True
@@ -88,12 +96,13 @@ validateMove :: Player -> AllFigures -> (Position, Position)
 validateMove player fs (oldPos,newPos)
   | not (M.member oldPos fs) = Left "Your first coordinate isn't a piece."
   | player /= (\(Just (Figure _ c)) -> c) g   = Left "Wrong Color."
-  | S.member newPos $ possibleMoves oldPos fs = newBoard
+  | S.member newPos (possibleMoves oldPos fs)
+    && not (threat newBoard player) = Right newBoard
   | otherwise    = Left "This move is invalid."
   where g        = M.lookup oldPos fs
-        newBoard = Right . pawnMutation
-                         . M.mapKeys (\x -> if x == oldPos then newPos else x)
-                         $ M.delete newPos fs
+        newBoard = pawnMutation
+                   . M.mapKeys (\x -> if x == oldPos then newPos else x)
+                   $ M.delete newPos fs
 
 pawnMutation :: AllFigures -> AllFigures
 pawnMutation = M.mapWithKey (\(_,y) a@(Figure p c)
