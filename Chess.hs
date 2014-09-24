@@ -2,6 +2,7 @@ import System.Environment
 import Data.Char
 import Control.Applicative
 import System.Console.ANSI
+import qualified Data.Set as S
 import qualified Data.Map as M
 
 type AllFigures = M.Map Position Figure
@@ -11,36 +12,38 @@ type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = clearScreen >> nextTurn Black startBoard
+main = clearScreen >> nextTurn White startBoard
 
 interaction :: Player -> AllFigures -> IO ()
 interaction player fs = do
   printPossibleMoves player fs
+  let nextPl = if player == Black then White else Black
   a <- getLine
-  either (\x -> putStrLn (colorize Red x ++ "\n") >> interaction player fs)
-    (nextTurn player) $ validateInput a >>= validateMove player fs
+  clearScreen
+  either (\x -> putStrLn (colorize Red x ++ "\n") >> nextTurn player fs)
+    (nextTurn nextPl) $ validateInput a >>= validateMove player fs
 
 nextTurn :: Player -> AllFigures -> IO ()
 nextTurn pl fs = do
-  let nextPl = if pl == Black then White else Black
-  clearScreen
   putStr $ prompt fs
-  if win fs nextPl
-    then putStrLn . colorize Red $ "\nThe " ++ show nextPl
+  if win fs pl
+    then putStrLn . colorize Red $ "\nThe " ++ show pl
          ++ " King was slayn!\n"
     else do
     computer <- fmap ("-c" `elem`) getArgs
-    if computer then computerMove nextPl fs else interaction nextPl fs
+    if computer then computerMove pl fs else interaction pl fs
 
 computerMove :: Player -> AllFigures -> IO ()
 computerMove player fs = do
+  clearScreen
   putStrLn "BEEP"
   nextTurn player fs
 
 printPossibleMoves :: Player -> AllFigures -> IO ()
 printPossibleMoves pl fs =
   (putStrLn . M.showTree)
-  (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
+  (M.filter (not . null) . M.mapWithKey
+   (\k _ -> S.toList $ possibleMoves k fs)
          $ M.filter (\(Figure _ c) -> c == pl) fs)
 
 colorize :: Color -> String -> String
@@ -84,8 +87,8 @@ validateMove :: Player -> AllFigures -> (Position, Position)
                 -> Either String AllFigures
 validateMove player fs (oldPos,newPos)
   | not (M.member oldPos fs) = Left "Your first coordinate isn't a piece."
-  | player /= (\(Just (Figure _ c)) -> c) g = Left "Wrong Color."
-  | newPos `elem` possibleMoves oldPos fs   = newBoard
+  | player /= (\(Just (Figure _ c)) -> c) g   = Left "Wrong Color."
+  | S.member newPos $ possibleMoves oldPos fs = newBoard
   | otherwise    = Left "This move is invalid."
   where g        = M.lookup oldPos fs
         newBoard = Right . pawnMutation
@@ -97,7 +100,7 @@ pawnMutation = M.mapWithKey (\(_,y) a@(Figure p c)
                              -> if y `elem` [1,8] && p == Pawn
                                 then Figure Queen c else a)
 
-possibleMoves :: Position -> AllFigures -> [Position]
+possibleMoves :: Position -> AllFigures -> S.Set (Int,Int)
 possibleMoves (x,y) fs
   | piece == King   = g [(x+dx,y+dy) | dx <- [-1..1], dy <- [-1..1]]
   | piece == Queen  = g $ bishop ++ rook
@@ -105,12 +108,11 @@ possibleMoves (x,y) fs
   | piece == Knight = g
     [(x+dx,y+dy) | dx <- [-2,-1,1,2], dy <- [-2,-1,1,2], abs dx /= abs dy]
   | piece == Bishop = g bishop
-  | piece == Pawn   = g $ case color of
-     Black -> pawn (-) 7
-     White -> pawn (+) 2
+  | piece == Pawn = g $ if color == Black then pawn (-) 7 else pawn (+) 2
   where
-    g = filter $ \(fx,fy) -> all (`elem` [1..8]) [fx,fy] && (fx,fy)/=(x,y) &&
-      null ["1" | (Just (Figure _ c)) <- [M.lookup (fx,fy) fs], c == color]
+    g p = S.fromList $ filter
+          (\(fx,fy) -> all (`elem` [1..8]) [fx,fy] && (fx,fy)/=(x,y) &&
+      null ["1" | (Just (Figure _ c)) <- [M.lookup (fx,fy) fs], c == color]) p
     color   = (\(Just (Figure _ c)) -> c) $ M.lookup (x,y) fs
     piece   = (\(Just (Figure p _)) -> p) $ M.lookup (x,y) fs
     l dc dr = (\s -> s ++ s ++ [maximum s + 1] ++ [minimum s - 1]) $ 0 :
@@ -120,9 +122,8 @@ possibleMoves (x,y) fs
                (if not (M.member (x,f y 1) fs)
                 then (x,f y 1):[(x,f y 2)|y == r && not(M.member(x,f y 2) fs)]
                 else [])
-    bishop =  [(x+dx,y+dx) | dx <- l (+) (+)]
-              ++ [(x-dy,y+dy) | dy <- l (-) (+)]
-    rook = [(x+dx,y+dy) | dx <- l (+) const, dy <- l const (+),
+    bishop = [(x+dx,y+dx) | dx <- l (+) (+)]++[(x-dy,y+dy) | dy <- l (-) (+)]
+    rook   = [(x+dx,y+dy) | dx <- l (+) const, dy <- l const (+),
               dy == 0 || dx == 0]
 
 startBoard :: AllFigures
