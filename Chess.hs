@@ -1,3 +1,4 @@
+import System.Environment
 import Data.Char
 import Control.Applicative
 import System.Console.ANSI
@@ -10,27 +11,37 @@ type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = clearScreen >> interaction White startBoard
+main = clearScreen >> nextTurn Black startBoard
 
 interaction :: Player -> AllFigures -> IO ()
 interaction player fs = do
-  putStr $ prompt fs
-  let nextPlayer = if player == Black then White else Black
-  if win fs player
-    then putStrLn . colorize Red $ "\nThe " ++ show player
-                                   ++ " King was slayn!\n"
-    else do a <- getLine
-            clearScreen
-            either (\x -> putStrLn (colorize Red x++"\n")
-                          >> interaction player fs)
-                   (interaction nextPlayer) $
-                   validateInput a >>= validateMove player fs
+  printPossibleMoves player fs
+  a <- getLine
+  either (\x -> putStrLn (colorize Red x ++ "\n") >> interaction player fs)
+    (nextTurn player) $ validateInput a >>= validateMove player fs
 
--- printPossibleMoves :: Player -> AllFigures -> IO ()
--- printPossibleMoves pl fs =
---   (putStrLn . M.showTree)
---   (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
---          $ M.filter (\(Figure _ c) -> c == pl) fs)
+nextTurn :: Player -> AllFigures -> IO ()
+nextTurn pl fs = do
+  let nextPl = if pl == Black then White else Black
+  clearScreen
+  putStr $ prompt fs
+  if win fs nextPl
+    then putStrLn . colorize Red $ "\nThe " ++ show nextPl
+         ++ " King was slayn!\n"
+    else do
+    computer <- fmap ("-c" `elem`) getArgs
+    if computer then computerMove nextPl fs else interaction nextPl fs
+
+computerMove :: Player -> AllFigures -> IO ()
+computerMove player fs = do
+  putStrLn "BEEP"
+  nextTurn player fs
+
+printPossibleMoves :: Player -> AllFigures -> IO ()
+printPossibleMoves pl fs =
+  (putStrLn . M.showTree)
+  (M.filter (not . null) . M.mapWithKey (\k _ -> possibleMoves k fs)
+         $ M.filter (\(Figure _ c) -> c == pl) fs)
 
 colorize :: Color -> String -> String
 colorize col s = setSGRCode [SetColor Foreground Vivid col] ++ s
@@ -89,11 +100,11 @@ pawnMutation = M.mapWithKey (\(_,y) a@(Figure p c)
 possibleMoves :: Position -> AllFigures -> [Position]
 possibleMoves (x,y) fs
   | piece == King   = g [(x+dx,y+dy) | dx <- [-1..1], dy <- [-1..1]]
-  | piece == Queen  = bishop ++ rook
-  | piece == Rook   = rook
+  | piece == Queen  = g $ bishop ++ rook
+  | piece == Rook   = g rook
   | piece == Knight = g
     [(x+dx,y+dy) | dx <- [-2,-1,1,2], dy <- [-2,-1,1,2], abs dx /= abs dy]
-  | piece == Bishop = bishop
+  | piece == Bishop = g bishop
   | piece == Pawn   = g $ case color of
      Black -> pawn (-) 7
      White -> pawn (+) 2
@@ -102,17 +113,16 @@ possibleMoves (x,y) fs
       null ["1" | (Just (Figure _ c)) <- [M.lookup (fx,fy) fs], c == color]
     color   = (\(Just (Figure _ c)) -> c) $ M.lookup (x,y) fs
     piece   = (\(Just (Figure p _)) -> p) $ M.lookup (x,y) fs
-    l dc dr = (\s -> concat [s ++ s ++ [maximum s + 1] ++ [minimum s - 1]
-                            | not $ null s]) .
+    l dc dr = (\s -> s ++ s ++ [maximum s + 1] ++ [minimum s - 1]) $ 0 :
               concatMap (takeWhile (\d -> not $ M.member (dc x d,dr y d) fs))
-              $ [[1..8],[-1,-2..(-8)]]
+              [[1..8],[-1,-2..(-8)]]
     pawn f r = [p | p <- [(x+1,f y 1),(x-1,f y 1)], M.member p fs] ++
                (if not (M.member (x,f y 1) fs)
                 then (x,f y 1):[(x,f y 2)|y == r && not(M.member(x,f y 2) fs)]
                 else [])
-    bishop = g [(x+dx,y+dy) | dx <- l (+) (+), dy <- l (-) (+),
-                abs dy == abs dx]
-    rook = g [(x+dx,y+dy) | dx <- 0:l (+) const, dy <- 0:l const (+),
+    bishop =  [(x+dx,y+dx) | dx <- l (+) (+)]
+              ++ [(x-dy,y+dy) | dy <- l (-) (+)]
+    rook = [(x+dx,y+dy) | dx <- l (+) const, dy <- l const (+),
               dy == 0 || dx == 0]
 
 startBoard :: AllFigures
