@@ -147,9 +147,11 @@ possibleMoves (x,y) fs = g $ case piece of
   where
     g = S.fromList . filter
           (\(fx,fy) -> all (`elem` [1..8]) [fx,fy] && (fx,fy)/=(x,y)
-                       && color (fx,fy) /= color (x,y))
-    color = getColor . fromJust . flip M.lookup fs
+                       && (M.notMember (fx,fy) fs
+                           || color (fx,fy) /= color (x,y)))
+    color pos = getColor . fromJust $ M.lookup pos fs
     piece = getPiece . fromJust $ M.lookup (x,y) fs
+--    piece = (\(Just p) -> getPiece p) $ M.lookup (x,y) fs
     l dc dr = (\s -> s ++ [maximum s + 1] ++ [minimum s - 1]) $ 0 :
               concatMap (takeWhile (\d -> M.notMember (dc x d,dr y d) fs))
               [[1..8],[-1,-2..(-8)]]
