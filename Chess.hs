@@ -7,17 +7,17 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import System.Random
 
-type Move       = (Position, Position)
-type AllFigures = M.Map Position Figure
-type Player     = Color
-data Figure     = Figure Piece Color deriving (Eq)
-type Position   = (Int, Int)
-data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
+type Move     = (Position, Position)
+type Board    = M.Map Position Figure
+type Player   = Color
+data Figure   = Figure Piece Color deriving (Eq)
+type Position = (Int, Int)
+data Piece    = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
 main = clearScreen >> nextTurn White startBoard
 
-interaction :: Player -> AllFigures -> IO ()
+interaction :: Player -> Board -> IO ()
 interaction player fs = do
   let nextPl          = if player == Black then White else Black
   a <- getLine
@@ -26,7 +26,7 @@ interaction player fs = do
                 >> nextTurn player fs)
     (nextTurn nextPl) $ validateInput a >>= validateMove player fs
 
-nextTurn :: Player -> AllFigures -> IO ()
+nextTurn :: Player -> Board -> IO ()
 nextTurn pl fs = do
   pc  <- fmap ("-c" `elem`) getArgs
   pc2 <- fmap ("-c2" `elem`) getArgs
@@ -41,7 +41,7 @@ nextTurn pl fs = do
     then computerMove [] pl fs
     else interaction pl fs
 
-computerMove :: [Move] -> Player -> AllFigures -> IO ()
+computerMove :: [Move] -> Player -> Board -> IO ()
 computerMove bad player fs = do
   let nextPl               = if player == Black then White else Black
   let move = bestMove bad player fs
@@ -52,7 +52,7 @@ computerMove bad player fs = do
     either (\_ -> computerMove (move:bad) player fs)
     (nextTurn nextPl) $validateMove player fs move
 
-bestMove :: [Move] -> Player -> AllFigures -> Move
+bestMove :: [Move] -> Player -> Board -> Move
 bestMove bad pl fs = snd a
   where
     a = M.foldrWithKey
@@ -89,7 +89,7 @@ colorize :: Color -> String -> String
 colorize col s = setSGRCode [SetColor Foreground Vivid col] ++ s
                  ++ setSGRCode [Reset]
 
-getScore :: AllFigures -> (Int,Int)
+getScore :: Board -> (Int,Int)
 getScore =  M.foldr (\(Figure p c) (b,w) ->
               (\m -> if c == White then (b+m,w) else (b,w+m))
               (case p of King -> 100
@@ -100,13 +100,13 @@ getScore =  M.foldr (\(Figure p c) (b,w) ->
                          Pawn -> 1))
             (-100,-100)
 
-threat :: AllFigures -> Player -> Bool
+threat :: Board -> Player -> Bool
 threat fs pl = M.foldr (\x y -> kingPos `elem` x || y) False
                (M.mapWithKey (\k _ -> S.toList $ possibleMoves k fs)
                 $ M.filter (\(Figure _ c) -> c /= pl) fs)
   where kingPos = fst . head . M.toList $ M.filter (Figure King pl==) fs
 
-win :: AllFigures -> Player -> Bool
+win :: Board -> Player -> Bool
 win fs pl
   | M.null $ M.filter (Figure King pl==) fs = True
   | otherwise = False
@@ -128,7 +128,7 @@ validateInput a
         toCol = (ord . head . last $ g) - ord 'a' + 1
         toRow = read . tail . last $ g :: Int
 
-validateMove :: Player -> AllFigures -> Move -> Either String AllFigures
+validateMove :: Player -> Board -> Move -> Either String Board
 validateMove player fs (oldPos,newPos)
   | not (M.member oldPos fs) = Left "Your first coordinate isn't a piece."
   | player /= (\(Just (Figure _ c)) -> c) g   = Left "Wrong Color."
@@ -140,12 +140,12 @@ validateMove player fs (oldPos,newPos)
                    . M.mapKeys (\x -> if x == oldPos then newPos else x)
                    $ M.delete newPos fs
 
-pawnMutation :: AllFigures -> AllFigures
+pawnMutation :: Board -> Board
 pawnMutation = M.mapWithKey (\(_,y) a@(Figure p c)
                              -> if y `elem` [1,8] && p == Pawn
                                 then Figure Queen c else a)
 
-possibleMoves :: Position -> AllFigures -> S.Set (Int,Int)
+possibleMoves :: Position -> Board -> S.Set (Int,Int)
 possibleMoves (x,y) fs
   | piece == King   = g [(x+dx,y+dy) | dx <- [-1..1], dy <- [-1..1]]
   | piece == Queen  = g $ bishop ++ rook
@@ -171,7 +171,7 @@ possibleMoves (x,y) fs
     rook   = [(x+dx,y+dy) | dx <- l (+) const, dy <- l const (+),
               dy == 0 || dx == 0]
 
-startBoard :: AllFigures
+startBoard :: Board
 startBoard = M.fromList $ g 8 Black ++ p 7 Black ++ g 1 White ++ p 2 White
   where g row color = zipWith (\col piece -> ((col, row), Figure piece color))
                       [1..8] [ Rook   , Knight
@@ -191,7 +191,7 @@ charOfPiece (Figure p c) = ((if c == Black
                            , (Pawn   , "P" , "p") ], p == piece])
                            ++ setSGRCode [Reset]
 
-prompt :: AllFigures -> String
+prompt :: Board -> String
 prompt fs = unlines . map ("    "++) $
             [ "┏━━" ++ colorize Blue "abcdefgh" ++ "━━┓   Score "
               ++ colorize Magenta (show (max 0 . fst . getScore $ fs))
@@ -205,7 +205,7 @@ prompt fs = unlines . map ("    "++) $
             where g y = (colorize Blue . show) y ++ "  " ++ extractRow y fs
                         ++ "  " ++ (colorize Blue . show) y
 
-extractRow :: Int -> AllFigures -> String
+extractRow :: Int -> Board -> String
 extractRow r fs = concat $ (\c -> maybe (if even (c+r) then "░" else " ")
                                   charOfPiece $ M.lookup (c,r) fs)
                   <$> [1..8]
