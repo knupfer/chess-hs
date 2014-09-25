@@ -7,6 +7,7 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import System.Random
 
+type Move       = (Position, Position)
 type AllFigures = M.Map Position Figure
 type Player     = Color
 data Figure     = Figure Piece Color deriving (Eq)
@@ -14,20 +15,20 @@ type Position   = (Int, Int)
 data Piece      = King | Queen | Rook | Knight | Bishop | Pawn deriving (Eq)
 
 main :: IO ()
-main = clearScreen >> nextTurn 1 White startBoard
+main = clearScreen >> nextTurn White startBoard
 
-interaction :: Int -> Player -> AllFigures -> IO ()
-interaction turn player fs = do
-  let nextPl = if player == Black then White else Black
+interaction :: Player -> AllFigures -> IO ()
+interaction player fs = do
+  let nextPl          = if player == Black then White else Black
   a <- getLine
   clearScreen
   either (\x -> putStrLn (colorize Red x ++ "\n")
-                >> nextTurn (turn+1) player fs)
-    (nextTurn 1 nextPl) $ validateInput a >>= validateMove player fs
+                >> nextTurn player fs)
+    (nextTurn nextPl) $ validateInput a >>= validateMove player fs
 
-nextTurn :: Int -> Player -> AllFigures -> IO ()
-nextTurn turn pl fs = do
-  pc <- fmap ("-c" `elem`) getArgs
+nextTurn :: Player -> AllFigures -> IO ()
+nextTurn pl fs = do
+  pc  <- fmap ("-c" `elem`) getArgs
   pc2 <- fmap ("-c2" `elem`) getArgs
   when (threat fs pl) . putStrLn $ colorize Yellow "Your King is threaten!\n"
   putStr $ prompt fs
@@ -37,23 +38,22 @@ nextTurn turn pl fs = do
     then putStrLn . colorize Red $ "\nThe " ++ show pl ++ " King was slayn!\n"
     else
     if (pc && pl == Black) || pc2
-    then computerMove turn [] pl fs
-    else interaction turn pl fs
+    then computerMove [] pl fs
+    else interaction pl fs
 
-computerMove :: Int -> [(Position,Position)] -> Player -> AllFigures -> IO ()
-computerMove turn bad player fs = do
-  let nextPl = if player == Black then White else Black
-  let move = bestMove turn bad player fs
+computerMove :: [Move] -> Player -> AllFigures -> IO ()
+computerMove bad player fs = do
+  let nextPl               = if player == Black then White else Black
+  let move = bestMove bad player fs
   if length bad > 50
     then putStrLn $ prompt fs
          ++ colorize Red ("\nThe " ++ show player ++ " King was slayn!\n")
     else
-    either (\_ -> computerMove turn (move:bad) player fs)
-    (nextTurn (turn+1) nextPl) $validateMove player fs move
+    either (\_ -> computerMove (move:bad) player fs)
+    (nextTurn nextPl) $validateMove player fs move
 
-bestMove :: Int -> [(Position,Position)] -> Player -> AllFigures
-            -> (Position,Position)
-bestMove turn bad pl fs = snd a
+bestMove :: [Move] -> Player -> AllFigures -> Move
+bestMove bad pl fs = snd a
   where
     a = M.foldrWithKey
         (\k list acc@(s,_) ->
@@ -63,7 +63,7 @@ bestMove turn bad pl fs = snd a
                then (s,(k,snd (distanceFold k list))) else acc)
         ((500,500),((1,2),(5,5))) g
     rand r = fst (randomR (0,r-1)
-                  (mkStdGen (length bad * turn * M.size fs * r
+                  (mkStdGen (length bad * M.size fs * r
                              * sum [x*y| (x,y) <- M.keys fs])))
     distanceFold k = foldr (\(lx,ly) acc@(s,_) ->
                              if (lx-fst kingPos)+(ly-snd kingPos)<(s+rand 10)
@@ -111,7 +111,7 @@ win fs pl
   | M.null $ M.filter (Figure King pl==) fs = True
   | otherwise = False
 
-validateInput :: String -> Either String (Position, Position)
+validateInput :: String -> Either String Move
 validateInput a
   | length g /= 2 =
       Left "You have to enter two coordinates like a2 b4."
@@ -128,8 +128,7 @@ validateInput a
         toCol = (ord . head . last $ g) - ord 'a' + 1
         toRow = read . tail . last $ g :: Int
 
-validateMove :: Player -> AllFigures -> (Position, Position)
-                -> Either String AllFigures
+validateMove :: Player -> AllFigures -> Move -> Either String AllFigures
 validateMove player fs (oldPos,newPos)
   | not (M.member oldPos fs) = Left "Your first coordinate isn't a piece."
   | player /= (\(Just (Figure _ c)) -> c) g   = Left "Wrong Color."
