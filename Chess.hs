@@ -6,7 +6,6 @@ import Control.Applicative
 import System.Console.ANSI
 import qualified Data.Set as S
 import qualified Data.Map as M
-import System.Random
 
 type Move     = (Position, Position)
 type Board    = M.Map Position Figure
@@ -32,7 +31,7 @@ nextTurn pl fs = do
   pc2 <- fmap ("-c2" `elem`) getArgs
   when (threat fs pl) . putStrLn $ colorize Yellow "Your King is threaten!\n"
   putStr $ prompt fs
-  when (pc && pc2)$ getLine >>= putStr
+  when (pc && pc2) $ getLine >>= putStr
   clearScreen
   if (pc && pl == Black) || pc2
     then computerMove [] pl fs
@@ -55,32 +54,23 @@ bestMove bad pl fs = snd a
     a = M.foldrWithKey
         (\k list acc@(s,_) ->
           if fst (scoreFold k list) < s
-          then (fst $ scoreFold k list,(k,snd $ scoreFold k list))
-          else if snd (distanceFold k list) /= (0,0) && rand 10 > 4
-               then (s,(k,snd (distanceFold k list))) else acc)
+          then (fst $ scoreFold k list, (k,snd $ scoreFold k list))
+          else if getPiece (fromJust (M.lookup k fs)) == Pawn
+                  && notElem (k,head list) bad
+               then (s,(k,head list))
+               else acc)
         ((500,500),((1,2),(5,5))) g
-    rand r = fst (randomR (0,r-1)
-                  (mkStdGen (length bad * M.size fs * r
-                             * sum [x*y| (x,y) <- M.keys fs])))
-    distanceFold k = foldr (\(lx,ly) acc@(s,_) ->
-                             if (lx-fst kingPos)+(ly-snd kingPos)<(s+rand 10)
-                                && notElem (k,(lx,ly)) bad
-                             then ((lx-fst kingPos)+(ly-snd kingPos), (lx,ly))
-                             else acc) (64,(0,0))
-    kingPos = head . M.keys $ M.filter (Figure King (if pl == White
-                                       then Black
-                                       else White)==) fs
     scoreFold k = foldr (\l acc@(s,_) ->
-                          (if ((score k l < s) && notElem (k,l) bad) ||
-                              ((score k l == s) && notElem (k,l) bad &&
-                               rand 10 > 4) then (score k l, l) else
-                             acc)) ((200,200),(1,2))
+                          (if (score k l < s) && notElem (k,l) bad
+                           then (score k l, l)
+                           else acc))
+                  ((200,200),(1,2))
     g = M.filter (not . null)
-     . M.mapWithKey (\k _ -> S.toList $ possibleMoves k fs)
-     $ M.filter ((==) pl . getColor) fs
+        . M.mapWithKey (\k _ -> S.toList $ possibleMoves k fs)
+        $ M.filter ((==) pl  . getColor) fs
     score old new = getScore . pawnMutation
-                   . M.mapKeys (\x -> if x == old then new else x)
-                   $ M.delete new fs
+                    . M.mapKeys (\x -> if x == old then new else x)
+                    $ M.delete new fs
 
 colorize :: Color -> String -> String
 colorize col s = setSGRCode [SetColor Foreground Vivid col] ++ s
@@ -122,7 +112,7 @@ validateInput a
 
 validateMove :: Player -> Board -> Move -> Either String Board
 validateMove pl fs (oldPos,newPos)
-  | M.notMember oldPos fs  = Left "Your first coordinate isn't a piece."
+  | M.notMember oldPos fs = Left "Your first coordinate isn't a piece."
   | pl /= (getColor . fromJust $ M.lookup oldPos fs) = Left "Wrong Color."
   | S.member newPos (possibleMoves oldPos fs)
     && not (threat newBoard pl) = Right newBoard
@@ -146,13 +136,12 @@ possibleMoves (x,y) fs = g $ case piece of
   Pawn   -> if color (x,y) == Black then pawn (-) 7 else pawn (+) 2
   where
     g = S.fromList . filter
-          (\(fx,fy) -> all (`elem` [1..8]) [fx,fy] && (fx,fy)/=(x,y)
+          (\(fx,fy) -> all (`elem` [1..8]) [fx,fy] && (fx,fy) /= (x,y)
                        && (M.notMember (fx,fy) fs
                            || color (fx,fy) /= color (x,y)))
     color pos = getColor . fromJust $ M.lookup pos fs
-    piece = getPiece . fromJust $ M.lookup (x,y) fs
---    piece = (\(Just p) -> getPiece p) $ M.lookup (x,y) fs
-    l dc dr = (\s -> s ++ [maximum s + 1] ++ [minimum s - 1]) $ 0 :
+    piece     = getPiece . fromJust $ M.lookup (x,y) fs
+    l dc dr   = (\s -> s ++ [maximum s + 1] ++ [minimum s - 1]) $ 0 :
               concatMap (takeWhile (\d -> M.notMember (dc x d,dr y d) fs))
               [[1..8],[-1,-2..(-8)]]
     pawn f r = [z | z <- [(x+1,f y 1),(x-1,f y 1)], M.member z fs] ++
