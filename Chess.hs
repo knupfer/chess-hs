@@ -119,7 +119,7 @@ validateMove ∷ Player → Board → Move → Either String Board
 validateMove pl fs (oldPos,newPos)
   | oldPos M.∉ fs = Left "Your first coordinate isn't a piece."
   | pl ≢ (getColor ∘ fromJust $ M.lookup oldPos fs) = Left "Wrong Color."
-  | newPos S.∈ (possibleMoves oldPos fs)
+  | newPos S.∈ possibleMoves oldPos fs
     ∧ not (threat newBoard pl) = Right newBoard
   | otherwise    = Left "This move is invalid."
   where newBoard = pawnMutation
